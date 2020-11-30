@@ -1,0 +1,53 @@
+WITH global_trxns AS 
+(
+SELECT DATE(block_timestamp) as date,
+       count(*) as total_trxn_count,
+       sum(value)/1e18 as total_trxn_value
+FROM `bigquery-public-data.crypto_ethereum.traces` as txns
+GROUP BY 1
+ORDER BY 1 ASC
+),
+
+trxns_hash_local as(
+SELECT 
+    DATE(block_timestamp) as date,
+    transaction_hash as hashes,
+    value, tag_name_verbose, tag_type_verbose
+FROM 
+  `bigquery-public-data.crypto_ethereum.traces` as trxns
+INNER JOIN `investigation-team-scratch.abby.eth_merged_data_updated` as c
+ON to_address = c.address
+
+UNION DISTINCT
+
+SELECT 
+    DATE(block_timestamp) as date, 
+    transaction_hash as hashes,
+    value, tag_name_verbose, tag_type_verbose
+FROM 
+  `bigquery-public-data.crypto_ethereum.traces` as trxns
+INNER JOIN `investigation-team-scratch.abby.eth_merged_data_updated` as c
+ON from_address = c.address
+),
+
+local_trxn_count as
+(
+SELECT date, 
+       count(DISTINCT hashes) as local_trxn_count,
+       sum(value)/1e18 as local_trxn_value,
+FROM trxns_hash_local
+GROUP BY 1
+)
+
+ SELECT
+    a.date as date,
+    total_trxn_count as global_trxn_count,
+    total_trxn_value as global_trxn_value,
+    local_trxn_count,
+    local_trxn_value
+ FROM global_trxns as a
+ LEFT JOIN local_trxn_count as b
+ ON a.date=b.date
+ WHERE a.date BETWEEN  '{{ start_date }}'  
+ and '{{ end_date }}'
+ ORDER BY 1
